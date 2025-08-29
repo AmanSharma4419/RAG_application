@@ -5,7 +5,7 @@ from app.db.mongo import files_collection
 from pymongo.errors import PyMongoError
 from .queue.q import q
 from .queue.workers import process_file
-from app.vectorstore.qdbclient import get_qdrant_store
+# from app.vectorstore.qdbclient import get_qdrant_store
 
 # from fastapi.staticfiles import StaticFiles
 from bson import ObjectId
@@ -17,9 +17,7 @@ app = FastAPI()
 @app.get("/")
 def hello():
     try:
-        vector_store = get_qdrant_store()
-        vector_store.add_texts(["Hello my name is aman kumar and im software developer"])
-        return {"status": "cool"}
+        return {"status": "cool server is running"}
     except Exception as e:
         return {"error": str(e)}
 
@@ -64,7 +62,7 @@ async def get_status(file_id: str):
         return {
             "file_id": file_doc["_id"],
             "status": file_doc.get("status", "unknown"),
-            "response": file_doc.get("response", None)  # roasted reply if available
+            "response": file_doc.get("response", None)
         }
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))

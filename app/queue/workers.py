@@ -4,6 +4,8 @@ from openai import OpenAI
 from dotenv import load_dotenv
 import fitz
 import os
+from langchain_community.document_loaders import PyPDFLoader
+from langchain_text_splitters import RecursiveCharacterTextSplitter
 
 load_dotenv()
 api_key = os.getenv("OPENAI_API_KEY")
@@ -59,22 +61,26 @@ def chat_with_openai(filepath: str):
 
 
 def process_file(id: str):
-    """Fetch file from MongoDB record, roast it, and update DB."""
-    print("📂 Processing file id:", id)
-
+    print("Processing file id:", id)
     file_doc = files_collection.find_one({"_id": ObjectId(id)})
     if not file_doc:
-        print(f"❌ File not found for id {id}")
+        print(f" File not found for id {id}")
         return {"error": f"File not found for id {id}"}
 
     filename = file_doc["filename"]
-    filepath = f"/mnt/uploads/{id}/{filename}"   # ✅ corrected absolute path
+    filepath = f"/mnt/uploads/{id}/{filename}"  
+    loader = PyPDFLoader(filepath)
+    documents = loader.load()
+    text_splitter = RecursiveCharacterTextSplitter(chunk_size=1000,
+    chunk_overlap=100)
+    splits = text_splitter.split_documents(documents)
+    print(f"Total chunks: {len(splits)}")
 
     if not os.path.exists(filepath):
-        print(f"❌ File does not exist on disk: {filepath}")
+        print(f"File does not exist on disk: {filepath}")
         return {"error": f"File not found on disk: {filepath}"}
 
-    print(f"✅ Found file: {filepath}")
+    print(f"Found file: {filepath}")
 
     try:
         roasted_reply = chat_with_openai(filepath)
@@ -97,7 +103,7 @@ def process_file(id: str):
         return {"status": "roasted", "reply": roasted_reply}
 
     except Exception as e:
-        print(f"❌ Error while roasting: {e}")
+        print(f"Error while roasting: {e}")
         files_collection.update_one(
             {"_id": ObjectId(id)},
             {
