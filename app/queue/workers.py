@@ -4,8 +4,9 @@ from openai import OpenAI
 from dotenv import load_dotenv
 import fitz
 import os
-from langchain_community.document_loaders import PyPDFLoader
-from langchain_text_splitters import RecursiveCharacterTextSplitter
+
+from app.utils.file import make_vector_embedding
+from app.vectorstore.qdbclient import get_qdrant_store
 
 load_dotenv()
 api_key = os.getenv("OPENAI_API_KEY")
@@ -48,10 +49,7 @@ def chat_with_openai(filepath: str):
         response = client.chat.completions.create(
             model="gpt-4o-mini",
             messages=[
-                {
-                    "role": "system",
-                    "content": content
-                },
+                {"role": "system", "content": content},
                 {"role": "user", "content": file_content},
             ],
         )
@@ -68,35 +66,21 @@ def process_file(id: str):
         return {"error": f"File not found for id {id}"}
 
     filename = file_doc["filename"]
-    filepath = f"/mnt/uploads/{id}/{filename}"  
-    loader = PyPDFLoader(filepath)
-    documents = loader.load()
-    text_splitter = RecursiveCharacterTextSplitter(chunk_size=1000,
-    chunk_overlap=100)
-    splits = text_splitter.split_documents(documents)
-    print(f"Total chunks: {len(splits)}")
-
+    filepath = f"/mnt/uploads/{id}/{filename}"
     if not os.path.exists(filepath):
         print(f"File does not exist on disk: {filepath}")
         return {"error": f"File not found on disk: {filepath}"}
-
-    print(f"Found file: {filepath}")
-
+    chunks = make_vector_embedding(filepath)
+    add_data = get_qdrant_store()
+    add_data.add_documents(documents=chunks)
     try:
         roasted_reply = chat_with_openai(filepath)
-
         if not roasted_reply:
             raise Exception("OpenAI did not return a reply.")
 
-        # ✅ Update MongoDB with roasted reply and status
         files_collection.update_one(
             {"_id": ObjectId(id)},
-            {
-                "$set": {
-                    "status": "roasted",
-                    "response": roasted_reply
-                }
-            }
+            {"$set": {"status": "roasted", "response": roasted_reply}},
         )
 
         print(f"🔥 Roasted reply saved for file {id}")
@@ -105,12 +89,6 @@ def process_file(id: str):
     except Exception as e:
         print(f"Error while roasting: {e}")
         files_collection.update_one(
-            {"_id": ObjectId(id)},
-            {
-                "$set": {
-                    "status": "error",
-                    "error": str(e)
-                }
-            }
+            {"_id": ObjectId(id)}, {"$set": {"status": "error", "error": str(e)}}
         )
         return {"error": str(e)}
